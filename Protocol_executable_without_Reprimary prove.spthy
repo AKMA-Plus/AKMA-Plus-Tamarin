@@ -1,0 +1,2307 @@
+theory AKMA_Plus begin
+
+// Function signature and definition of the equational theory E
+
+builtins: diffie-hellman, multiset
+functions: KDF_AF/2, KDF_AKMA/3, KDF_AUSF/3, KDF_A_TID/3, MAC/1,
+           MAC_gen/2, MAC_verify/3, MIC/1, Sign_Mac/2, adec/2, aenc/2, f/2,
+           fst/1, pair/2, pk/1, sdec/2, senc/2, sign/2, snd/1, true/0,
+           verify/3
+equations:
+    adec(aenc(x.1, pk(x.2)), x.2) = x.1,
+    fst(<x.1, x.2>) = x.1,
+    sdec(senc(x.1, x.2), x.2) = x.1,
+    snd(<x.1, x.2>) = x.2,
+    verify(sign(x.1, x.2), x.1, pk(x.2)) = true
+
+
+
+heuristic: o "akma_oracle"
+
+
+
+
+
+
+
+
+
+
+
+predicate: Equal( x, y )<=>x = y
+
+predicate: NotEqual( x, y )<=>¬(x = y)
+
+restriction hn_once:
+  "∀ #i #j. ((HN_Once( ) @ #i) ∧ (HN_Once( ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+rule (modulo E) send_secure:
+   [ SndS( ~cid, A, B, m ) ] --> [ Sec( ~cid, A, B, m ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) receive_secure:
+   [ Sec( ~cid, A, B, m ) ] --> [ RcvS( ~cid, A, B, m ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Init_HN:
+   [ Fr( ~sk_HN ), Fr( ~id_HN ) ]
+  --[ HomeNet( ~id_HN ), HN_Once( ) ]->
+   [
+   !HN_key( ~id_HN, ~sk_HN ), !HN( ~id_HN ),
+   !Pk( ~id_HN, pk(~sk_HN) ), Out( <~id_HN, pk(~sk_HN)> )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Init_AF:
+   [ Fr( ~id_AF ), Fr( ~sk_AF ) ]
+  --[ ServicePro( ~id_AF ) ]->
+   [
+   !AF_Ltk( ~id_AF, ~sk_AF ), !AF_Pk( ~id_AF, pk(~sk_AF) ),
+   Out( <~id_AF, pk(~sk_AF)> )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Subscribe_UE:
+   [ Fr( ~SUPI ), Fr( ~K ), !HN( ~id_HN ) ]
+  --[ Subscribe( ~SUPI, ~id_HN ) ]->
+   [ !Sub( ~SUPI, ~id_HN ), !Sub_K( ~SUPI, ~id_HN, ~K ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Init_Pri_Auth:
+   [ Fr( ~R ), !Sub_K( ~SUPI, ~id_HN, ~K ) ]
+  --[ Pri_Auth( KDF_AUSF(~K, ~id_HN, ~R), ~SUPI, ~id_HN ) ]->
+   [
+   UE_Auth( ~SUPI, KDF_AUSF(~K, ~id_HN, ~R), ~id_HN ),
+   AUSF( ~SUPI, ~id_HN, KDF_AUSF(~K, ~id_HN, ~R) )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_SUPI:
+   [ !Sub( ~SUPI, ~id_HN ) ]
+  --[
+  Reveal( ~SUPI, <'SUPI', ~SUPI> ), Reveal( ~id_HN, <'SUPI', ~SUPI> )
+  ]->
+   [ Out( ~SUPI ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_K:
+   [ !Sub_K( ~SUPI, ~id_HN, ~K ) ]
+  --[ Reveal( ~SUPI, <'K', ~K> ), Reveal( ~id_HN, <'K', ~K> ) ]->
+   [ Out( ~K ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_sk_HN:
+   [ !HN_key( ~idHN, ~sk_HN ) ]
+  --[ Reveal( ~idHN, <'skHN', ~sk_HN> ) ]->
+   [ Out( ~sk_HN ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) AKMA_Material_Generation_UE:
+   [ UE_Auth( ~SUPI, K_AUSF, ~id_HN ) ]
+  --[ Generation_UE( ~SUPI ) ]->
+   [
+   UE_Auth_KEY( ~SUPI, K_AUSF, KDF_AKMA(K_AUSF, ~SUPI, $C_1),
+                <KDF_A_TID(K_AUSF, ~SUPI, $C_2), ~id_HN>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) AKMA_Material_Generation_AUSF:
+   [ AUSF( ~SUPI, ~id_HN, K_AUSF ) ]
+  --[ Generation_HN( ~id_HN ) ]->
+   [
+   AUSF_KEY( ~SUPI, K_AUSF, ~id_HN, KDF_AKMA(K_AUSF, ~SUPI, $C_1),
+             <KDF_A_TID(K_AUSF, ~SUPI, $C_2), ~id_HN>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) K_AKMA_Register:
+   [ AUSF_KEY( ~SUPI, K_AUSF, ~id_HN, K_AKMA, <A_TID, ~id_HN> ) ]
+  --[ K_AKMA_Register( ~id_HN ) ]->
+   [ AAnF( ~id_HN, ~SUPI, <A_TID, ~id_HN>, K_AKMA ) ]
+
+  /* has exactly the trivial AC variant */
+
+restriction Restr_Re_pri_auth_1:
+  "∀ x #NOW x.1.
+    (Restr_Re_pri_auth_1( x, x.1 ) @ #NOW) ⇒ (¬(x = x.1))"
+  // safety formula
+
+restriction Restr_Re_pri_auth_2:
+  "∀ x #NOW x.1.
+    (Restr_Re_pri_auth_2( x, x.1 ) @ #NOW) ⇒ (¬(x = x.1))"
+  // safety formula
+
+rule (modulo E) Re_pri_auth:
+   [
+   AAnF1( ~id_HN, ~SUPI, <A_TID, ~id_HN>, K_AKMA ),
+   AUSF_KEY( ~SUPI, K_AUSF, ~id_HN, K_AKMA_new, <A_TID_new, ~id_HN> )
+   ]
+  --[
+  K_AKMA_Re_Register( ~id_HN ),
+  Restr_Re_pri_auth_1( K_AKMA_new, K_AKMA ),
+  Restr_Re_pri_auth_2( A_TID_new, A_TID )
+  ]->
+   [ AAnF( ~id_HN, ~SUPI, <A_TID_new, ~id_HN>, K_AKMA_new ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) UE_send_request:
+   [
+   UE_Auth_KEY( ~SUPI, K_AUSF, K_AKMA, <A_TID, ~id_HN> ),
+   !AF_Pk( ~id_AF, PK_AF ), Fr( ~tid ), Fr( ~u ), Fr( ~a1 ),
+   Fr( ~a2 ), !Sub( ~SUPI, ~id_HN )
+   ]
+  --[
+  AUTO_OUT_TERM_2_3_1_1_1_0_1__AAnF_Send_K_AF___VARIANT_3( senc(<
+                                                                 ~id_AF, ~a2>,
+                                                                K_AKMA)
+  ),
+  UE_send_request( ~SUPI ),
+  Secret( <'A_KID', A_TID, ~id_HN>, ~SUPI ),
+  Running( <A_TID, ~id_HN>, ~id_AF,
+           <'UE', 'AF', 'A_KID', A_TID, ~id_HN>
+  ),
+  Running( ~SUPI, ~id_HN, <'UE', 'HN', 'A_KID', A_TID, ~id_HN> ),
+  Running( <A_TID, ~id_HN>, ~id_AF,
+           <'UE', 'AF', 'K_AF', KDF_AF(K_AKMA, ~id_AF)>
+  ),
+  Running( ~SUPI, ~id_HN, <'UE', 'AAnF', 'K_AKMA', K_AKMA> ),
+  Honest( <A_TID, ~id_HN> ), Honest( ~id_AF ), Honest( ~id_HN ),
+  OutTerm( aenc(<'g'^~u, ~a1>, PK_AF) ),
+  OutTerm( senc(<~id_AF, ~a2>, K_AKMA) ),
+  OutTerm2( aenc(<'g'^~u, ~a1>, PK_AF) )
+  ]->
+   [
+   Out( <A_TID, ~id_HN, aenc(<'g'^~u, ~a1>, PK_AF), 
+         senc(<~id_AF, ~a2>, K_AKMA)>
+   ),
+   UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA, <A_TID, ~id_HN>,
+           KDF_AF(K_AKMA, ~id_AF), ~id_AF, ~u, ~a2
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) AF_send_KeyRequest:
+   [
+   !AF_Pk( ~id_AF, PK_AF ),
+   In( <A_TID, ~id_HN, CT_UEtoAF, CT_UEtoAAnF> ), Fr( ~cid ),
+   Fr( ~tid )
+   ]
+  --[
+  AF_send_KeyRequest( ~id_AF ),
+  Secret( <'A_KID', A_TID, ~id_HN>, ~id_AF ),
+  Commit( ~id_AF, <A_TID, ~id_HN>,
+          <'UE', 'AF', 'A_KID', A_TID, ~id_HN>
+  ),
+  Running( ~id_AF, ~id_HN, <'AF', 'HN', 'A_KID', A_TID, ~id_HN> ),
+  Running( ~id_AF, ~id_HN, <'AF', 'HN', 'id_AF', ~id_AF> ),
+  Honest( ~id_AF ), Honest( <A_TID, ~id_HN> ), Honest( ~id_HN )
+  ]->
+   [
+   SndS( ~cid, ~id_AF, ~id_HN, <A_TID, ~id_HN, ~id_AF, CT_UEtoAAnF> ),
+   AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>, CT_UEtoAF, ~cid )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) K_AF_Generation_AAnF:
+   [
+   AAnF( ~id_HN, ~SUPI, <A_TID, ~id_HN>, K_AKMA ),
+   !AF_Pk( ~id_AF, PK_AF )
+   ]
+  --[ Session_Key_Generation_AAnF( ~id_HN ) ]->
+   [
+   AAnF_KEY( ~id_HN, ~SUPI, <A_TID, ~id_HN>, K_AKMA,
+             KDF_AF(K_AKMA, ~id_AF), ~id_AF
+   ),
+   AAnF1( ~id_HN, ~SUPI, <A_TID, ~id_HN>, K_AKMA )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) AAnF_Send_K_AF:
+   [
+   Fr( ~exptime ),
+   AAnF_KEY( ~id_HN, ~SUPI, <A_TID, ~id_HN>, K_AKMA, K_AF, ~id_AF ),
+   RcvS( ~cid, ~id_AF, ~id_HN, <A_TID, ~id_HN, ~id_AF, CT_UEtoAAnF> )
+   ]
+  --[
+  InTerm( CT_UEtoAAnF, snd(sdec(CT_UEtoAAnF, K_AKMA)) ),
+  HN_Response( ~id_HN, K_AF ), Secret( <'K_AF', K_AF>, ~id_HN ),
+  Commit( ~id_HN, ~SUPI, <'UE', 'HN', 'A_KID', A_TID, ~id_HN> ),
+  Commit( ~id_HN, ~SUPI,
+          <'UE', 'HN', 'id_AF', fst(sdec(CT_UEtoAAnF, K_AKMA))>
+  ),
+  Commit( ~id_HN, ~id_AF, <'AF', 'HN', 'A_KID', A_TID, ~id_HN> ),
+  Commit( ~id_HN, ~id_AF, <'AF', 'AAnF', 'K_AKMA', K_AKMA> ),
+  Running( ~id_HN, ~id_AF, <'HN', 'AF', 'K_AF', K_AF> ),
+  Running( ~id_HN, ~id_AF, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+  Running( ~id_HN, ~SUPI, <'AAnF', 'UE', 'K_AKMA', K_AKMA> ),
+  Honest( ~id_HN ), Honest( ~id_AF ),
+  Eq( ~id_AF, fst(sdec(CT_UEtoAAnF, K_AKMA)) )
+  ]->
+   [
+   SndS( ~cid, ~id_HN, ~id_AF,
+         <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), 
+          senc(<~id_AF, ('1'++snd(sdec(CT_UEtoAAnF, K_AKMA)))>, K_AKMA)>
+   )
+   ]
+ variants
+  rule (modulo AC) AAnF_Send_K_AF___VARIANT_1:
+     [
+     Fr( ~exptime ),
+     AAnF_KEY( ~id_HN, ~SUPI, <A_TID, ~id_HN>, K_AKMA.3, K_AF, ~id_AF ),
+     RcvS( ~cid, ~id_AF, ~id_HN, <A_TID, ~id_HN, ~id_AF, CT_UEtoAAnF.2>
+     )
+     ]
+    --[
+    InTerm( CT_UEtoAAnF.2, snd(sdec(CT_UEtoAAnF.2, K_AKMA.3)) ),
+    HN_Response( ~id_HN, K_AF ), Secret( <'K_AF', K_AF>, ~id_HN ),
+    Commit( ~id_HN, ~SUPI, <'UE', 'HN', 'A_KID', A_TID, ~id_HN> ),
+    Commit( ~id_HN, ~SUPI,
+            <'UE', 'HN', 'id_AF', fst(sdec(CT_UEtoAAnF.2, K_AKMA.3))>
+    ),
+    Commit( ~id_HN, ~id_AF, <'AF', 'HN', 'A_KID', A_TID, ~id_HN> ),
+    Commit( ~id_HN, ~id_AF, <'AF', 'AAnF', 'K_AKMA', K_AKMA.3> ),
+    Running( ~id_HN, ~id_AF, <'HN', 'AF', 'K_AF', K_AF> ),
+    Running( ~id_HN, ~id_AF, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Running( ~id_HN, ~SUPI, <'AAnF', 'UE', 'K_AKMA', K_AKMA.3> ),
+    Honest( ~id_HN ), Honest( ~id_AF ),
+    Eq( ~id_AF, fst(sdec(CT_UEtoAAnF.2, K_AKMA.3)) )
+    ]->
+     [
+     SndS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), 
+            senc(<~id_AF, ('1'++snd(sdec(CT_UEtoAAnF.2, K_AKMA.3)))>, K_AKMA.3)
+           >
+     )
+     ]
+    // loop breaker: [2]
+  ,
+  rule (modulo AC) AAnF_Send_K_AF___VARIANT_2:
+     [
+     Fr( ~exptime ),
+     AAnF_KEY( ~id_HN, ~SUPI, <A_TID, ~id_HN>, K_AKMA.2, K_AF, ~id_AF ),
+     RcvS( ~cid, ~id_AF, ~id_HN,
+           <A_TID, ~id_HN, ~id_AF, senc(x.3, K_AKMA.2)>
+     )
+     ]
+    --[
+    InTerm( senc(x.3, K_AKMA.2), snd(x.3) ),
+    HN_Response( ~id_HN, K_AF ), Secret( <'K_AF', K_AF>, ~id_HN ),
+    Commit( ~id_HN, ~SUPI, <'UE', 'HN', 'A_KID', A_TID, ~id_HN> ),
+    Commit( ~id_HN, ~SUPI, <'UE', 'HN', 'id_AF', fst(x.3)> ),
+    Commit( ~id_HN, ~id_AF, <'AF', 'HN', 'A_KID', A_TID, ~id_HN> ),
+    Commit( ~id_HN, ~id_AF, <'AF', 'AAnF', 'K_AKMA', K_AKMA.2> ),
+    Running( ~id_HN, ~id_AF, <'HN', 'AF', 'K_AF', K_AF> ),
+    Running( ~id_HN, ~id_AF, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Running( ~id_HN, ~SUPI, <'AAnF', 'UE', 'K_AKMA', K_AKMA.2> ),
+    Honest( ~id_HN ), Honest( ~id_AF ), Eq( ~id_AF, fst(x.3) )
+    ]->
+     [
+     SndS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), 
+            senc(<~id_AF, ('1'++snd(x.3))>, K_AKMA.2)>
+     )
+     ]
+    // loop breaker: [2]
+  ,
+  rule (modulo AC) AAnF_Send_K_AF___VARIANT_3:
+     [
+     Fr( ~exptime ),
+     AAnF_KEY( ~id_HN, ~SUPI, <A_TID, ~id_HN>, K_AKMA.2, K_AF, ~id_AF ),
+     RcvS( ~cid, ~id_AF, ~id_HN,
+           <A_TID, ~id_HN, ~id_AF, senc(<z.4, z.3>, K_AKMA.2)>
+     )
+     ]
+    --[
+    AUTO_IN_TERM_2_3_1_1_1_0_1__AAnF_Send_K_AF___VARIANT_3( senc(<z.4, 
+                                                                  z.3>,
+                                                                 K_AKMA.2),
+                                                            z.3
+    ),
+    InTerm( senc(<z.4, z.3>, K_AKMA.2), z.3 ),
+    HN_Response( ~id_HN, K_AF ), Secret( <'K_AF', K_AF>, ~id_HN ),
+    Commit( ~id_HN, ~SUPI, <'UE', 'HN', 'A_KID', A_TID, ~id_HN> ),
+    Commit( ~id_HN, ~SUPI, <'UE', 'HN', 'id_AF', z.4> ),
+    Commit( ~id_HN, ~id_AF, <'AF', 'HN', 'A_KID', A_TID, ~id_HN> ),
+    Commit( ~id_HN, ~id_AF, <'AF', 'AAnF', 'K_AKMA', K_AKMA.2> ),
+    Running( ~id_HN, ~id_AF, <'HN', 'AF', 'K_AF', K_AF> ),
+    Running( ~id_HN, ~id_AF, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Running( ~id_HN, ~SUPI, <'AAnF', 'UE', 'K_AKMA', K_AKMA.2> ),
+    Honest( ~id_HN ), Honest( ~id_AF ), Eq( ~id_AF, z.4 )
+    ]->
+     [
+     SndS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), 
+            senc(<~id_AF, ('1'++z.3)>, K_AKMA.2)>
+     )
+     ]
+    // loop breaker: [2]
+
+rule (modulo E) AF_Response_Key:
+   [
+   RcvS( ~cid, ~id_HN, ~id_AF,
+         <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), CT_AAnFtoUE>
+   ),
+   AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>, CT_UEtoAF, ~cid ),
+   Fr( ~v ), !AF_Ltk( ~id_AF, ~AF_RSA )
+   ]
+  --[
+  InTerm2( CT_UEtoAF, snd(adec(CT_UEtoAF, ~AF_RSA)) ),
+  AF_session_response( ~id_AF, K_AF ),
+  Forward_Secrecy( ~tid,
+                   KDF_AF(K_AF, fst(adec(CT_UEtoAF, ~AF_RSA))^~v)
+  ),
+  Secret( <'K_AF', K_AF>, ~id_AF ),
+  Secret( <'K_AF_prime', 
+           KDF_AF(K_AF, fst(adec(CT_UEtoAF, ~AF_RSA))^~v)>,
+          ~id_AF
+  ),
+  Commit( ~id_AF, <A_TID, ~id_HN>, <'UE', 'AF', 'K_AF', K_AF> ),
+  Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF', K_AF> ),
+  Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+  Honest( ~id_AF ), Honest( ~id_HN ), Honest( <A_TID, ~id_HN> )
+  ]->
+   [
+   Out( <f(K_AF, 'AF'), CT_AAnFtoUE, 
+         sign(Sign_Mac('g'^~v, snd(adec(CT_UEtoAF, ~AF_RSA))), ~AF_RSA), 
+         'g'^~v, Sign_Mac('g'^~v, snd(adec(CT_UEtoAF, ~AF_RSA)))>
+   ),
+   AF_Confirmation( ~tid, ~id_AF, K_AF, <A_TID, ~id_HN>, ~cid )
+   ]
+ variants
+  rule (modulo AC) AF_Response_Key___VARIANT_1:
+     [
+     RcvS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), CT_AAnFtoUE>
+     ),
+     AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>, CT_UEtoAF.4, ~cid ),
+     Fr( ~v.3 ), !AF_Ltk( ~id_AF, ~AF_RSA.2 )
+     ]
+    --[
+    InTerm2( CT_UEtoAF.4, snd(adec(CT_UEtoAF.4, ~AF_RSA.2)) ),
+    AF_session_response( ~id_AF, K_AF ),
+    Forward_Secrecy( ~tid,
+                     KDF_AF(K_AF, fst(adec(CT_UEtoAF.4, ~AF_RSA.2))^~v.3)
+    ),
+    Secret( <'K_AF', K_AF>, ~id_AF ),
+    Secret( <'K_AF_prime', 
+             KDF_AF(K_AF, fst(adec(CT_UEtoAF.4, ~AF_RSA.2))^~v.3)>,
+            ~id_AF
+    ),
+    Commit( ~id_AF, <A_TID, ~id_HN>, <'UE', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Honest( ~id_AF ), Honest( ~id_HN ), Honest( <A_TID, ~id_HN> )
+    ]->
+     [
+     Out( <f(K_AF, 'AF'), CT_AAnFtoUE, 
+           sign(Sign_Mac('g'^~v.3, snd(adec(CT_UEtoAF.4, ~AF_RSA.2))),
+                ~AF_RSA.2), 
+           'g'^~v.3, Sign_Mac('g'^~v.3, snd(adec(CT_UEtoAF.4, ~AF_RSA.2)))>
+     ),
+     AF_Confirmation( ~tid, ~id_AF, K_AF, <A_TID, ~id_HN>, ~cid )
+     ]
+  ,
+  rule (modulo AC) AF_Response_Key___VARIANT_2:
+     [
+     RcvS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), CT_AAnFtoUE>
+     ),
+     AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>,
+                 aenc(<DH_neutral, z.3>, pk(~AF_RSA.2)), ~cid
+     ),
+     Fr( ~v ), !AF_Ltk( ~id_AF, ~AF_RSA.2 )
+     ]
+    --[
+    InTerm2( aenc(<DH_neutral, z.3>, pk(~AF_RSA.2)), z.3 ),
+    AF_session_response( ~id_AF, K_AF ),
+    Forward_Secrecy( ~tid, KDF_AF(K_AF, DH_neutral) ),
+    Secret( <'K_AF', K_AF>, ~id_AF ),
+    Secret( <'K_AF_prime', KDF_AF(K_AF, DH_neutral)>, ~id_AF ),
+    Commit( ~id_AF, <A_TID, ~id_HN>, <'UE', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Honest( ~id_AF ), Honest( ~id_HN ), Honest( <A_TID, ~id_HN> )
+    ]->
+     [
+     Out( <f(K_AF, 'AF'), CT_AAnFtoUE, 
+           sign(Sign_Mac('g'^~v, z.3), ~AF_RSA.2), 'g'^~v, 
+           Sign_Mac('g'^~v, z.3)>
+     ),
+     AF_Confirmation( ~tid, ~id_AF, K_AF, <A_TID, ~id_HN>, ~cid )
+     ]
+  ,
+  rule (modulo AC) AF_Response_Key___VARIANT_3:
+     [
+     RcvS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), CT_AAnFtoUE>
+     ),
+     AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>,
+                 aenc(<z.5^inv(~v.3), z.4>, pk(~AF_RSA.2)), ~cid
+     ),
+     Fr( ~v.3 ), !AF_Ltk( ~id_AF, ~AF_RSA.2 )
+     ]
+    --[
+    InTerm2( aenc(<z.5^inv(~v.3), z.4>, pk(~AF_RSA.2)), z.4 ),
+    AF_session_response( ~id_AF, K_AF ),
+    Forward_Secrecy( ~tid, KDF_AF(K_AF, z.5) ),
+    Secret( <'K_AF', K_AF>, ~id_AF ),
+    Secret( <'K_AF_prime', KDF_AF(K_AF, z.5)>, ~id_AF ),
+    Commit( ~id_AF, <A_TID, ~id_HN>, <'UE', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Honest( ~id_AF ), Honest( ~id_HN ), Honest( <A_TID, ~id_HN> )
+    ]->
+     [
+     Out( <f(K_AF, 'AF'), CT_AAnFtoUE, 
+           sign(Sign_Mac('g'^~v.3, z.4), ~AF_RSA.2), 'g'^~v.3, 
+           Sign_Mac('g'^~v.3, z.4)>
+     ),
+     AF_Confirmation( ~tid, ~id_AF, K_AF, <A_TID, ~id_HN>, ~cid )
+     ]
+  ,
+  rule (modulo AC) AF_Response_Key___VARIANT_4:
+     [
+     RcvS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), CT_AAnFtoUE>
+     ),
+     AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>,
+                 aenc(x.4, pk(~AF_RSA.2)), ~cid
+     ),
+     Fr( ~v.3 ), !AF_Ltk( ~id_AF, ~AF_RSA.2 )
+     ]
+    --[
+    InTerm2( aenc(x.4, pk(~AF_RSA.2)), snd(x.4) ),
+    AF_session_response( ~id_AF, K_AF ),
+    Forward_Secrecy( ~tid, KDF_AF(K_AF, fst(x.4)^~v.3) ),
+    Secret( <'K_AF', K_AF>, ~id_AF ),
+    Secret( <'K_AF_prime', KDF_AF(K_AF, fst(x.4)^~v.3)>, ~id_AF ),
+    Commit( ~id_AF, <A_TID, ~id_HN>, <'UE', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Honest( ~id_AF ), Honest( ~id_HN ), Honest( <A_TID, ~id_HN> )
+    ]->
+     [
+     Out( <f(K_AF, 'AF'), CT_AAnFtoUE, 
+           sign(Sign_Mac('g'^~v.3, snd(x.4)), ~AF_RSA.2), 'g'^~v.3, 
+           Sign_Mac('g'^~v.3, snd(x.4))>
+     ),
+     AF_Confirmation( ~tid, ~id_AF, K_AF, <A_TID, ~id_HN>, ~cid )
+     ]
+  ,
+  rule (modulo AC) AF_Response_Key___VARIANT_5:
+     [
+     RcvS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), CT_AAnFtoUE>
+     ),
+     AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>,
+                 aenc(<x.5, z.4>, pk(~AF_RSA.2)), ~cid
+     ),
+     Fr( ~v.3 ), !AF_Ltk( ~id_AF, ~AF_RSA.2 )
+     ]
+    --[
+    InTerm2( aenc(<x.5, z.4>, pk(~AF_RSA.2)), z.4 ),
+    AF_session_response( ~id_AF, K_AF ),
+    Forward_Secrecy( ~tid, KDF_AF(K_AF, x.5^~v.3) ),
+    Secret( <'K_AF', K_AF>, ~id_AF ),
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.5^~v.3)>, ~id_AF ),
+    Commit( ~id_AF, <A_TID, ~id_HN>, <'UE', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Honest( ~id_AF ), Honest( ~id_HN ), Honest( <A_TID, ~id_HN> )
+    ]->
+     [
+     Out( <f(K_AF, 'AF'), CT_AAnFtoUE, 
+           sign(Sign_Mac('g'^~v.3, z.4), ~AF_RSA.2), 'g'^~v.3, 
+           Sign_Mac('g'^~v.3, z.4)>
+     ),
+     AF_Confirmation( ~tid, ~id_AF, K_AF, <A_TID, ~id_HN>, ~cid )
+     ]
+  ,
+  rule (modulo AC) AF_Response_Key___VARIANT_6:
+     [
+     RcvS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), CT_AAnFtoUE>
+     ),
+     AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>,
+                 aenc(<x.5^x.6, z.4>, pk(~AF_RSA.2)), ~cid
+     ),
+     Fr( ~v.3 ), !AF_Ltk( ~id_AF, ~AF_RSA.2 )
+     ]
+    --[
+    InTerm2( aenc(<x.5^x.6, z.4>, pk(~AF_RSA.2)), z.4 ),
+    AF_session_response( ~id_AF, K_AF ),
+    Forward_Secrecy( ~tid, KDF_AF(K_AF, x.5^(~v.3*x.6)) ),
+    Secret( <'K_AF', K_AF>, ~id_AF ),
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.5^(~v.3*x.6))>, ~id_AF ),
+    Commit( ~id_AF, <A_TID, ~id_HN>, <'UE', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Honest( ~id_AF ), Honest( ~id_HN ), Honest( <A_TID, ~id_HN> )
+    ]->
+     [
+     Out( <f(K_AF, 'AF'), CT_AAnFtoUE, 
+           sign(Sign_Mac('g'^~v.3, z.4), ~AF_RSA.2), 'g'^~v.3, 
+           Sign_Mac('g'^~v.3, z.4)>
+     ),
+     AF_Confirmation( ~tid, ~id_AF, K_AF, <A_TID, ~id_HN>, ~cid )
+     ]
+  ,
+  rule (modulo AC) AF_Response_Key___VARIANT_7:
+     [
+     RcvS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), CT_AAnFtoUE>
+     ),
+     AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>,
+                 aenc(<x.5^inv((~v.3*x.6)), z.4>, pk(~AF_RSA.2)), ~cid
+     ),
+     Fr( ~v.3 ), !AF_Ltk( ~id_AF, ~AF_RSA.2 )
+     ]
+    --[
+    InTerm2( aenc(<x.5^inv((~v.3*x.6)), z.4>, pk(~AF_RSA.2)), z.4 ),
+    AF_session_response( ~id_AF, K_AF ),
+    Forward_Secrecy( ~tid, KDF_AF(K_AF, x.5^inv(x.6)) ),
+    Secret( <'K_AF', K_AF>, ~id_AF ),
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.5^inv(x.6))>, ~id_AF ),
+    Commit( ~id_AF, <A_TID, ~id_HN>, <'UE', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Honest( ~id_AF ), Honest( ~id_HN ), Honest( <A_TID, ~id_HN> )
+    ]->
+     [
+     Out( <f(K_AF, 'AF'), CT_AAnFtoUE, 
+           sign(Sign_Mac('g'^~v.3, z.4), ~AF_RSA.2), 'g'^~v.3, 
+           Sign_Mac('g'^~v.3, z.4)>
+     ),
+     AF_Confirmation( ~tid, ~id_AF, K_AF, <A_TID, ~id_HN>, ~cid )
+     ]
+  ,
+  rule (modulo AC) AF_Response_Key___VARIANT_8:
+     [
+     RcvS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), CT_AAnFtoUE>
+     ),
+     AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>,
+                 aenc(<x.5^(x.6*inv(~v.3)), z.4>, pk(~AF_RSA.2)), ~cid
+     ),
+     Fr( ~v.3 ), !AF_Ltk( ~id_AF, ~AF_RSA.2 )
+     ]
+    --[
+    InTerm2( aenc(<x.5^(x.6*inv(~v.3)), z.4>, pk(~AF_RSA.2)), z.4 ),
+    AF_session_response( ~id_AF, K_AF ),
+    Forward_Secrecy( ~tid, KDF_AF(K_AF, x.5^x.6) ),
+    Secret( <'K_AF', K_AF>, ~id_AF ),
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.5^x.6)>, ~id_AF ),
+    Commit( ~id_AF, <A_TID, ~id_HN>, <'UE', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Honest( ~id_AF ), Honest( ~id_HN ), Honest( <A_TID, ~id_HN> )
+    ]->
+     [
+     Out( <f(K_AF, 'AF'), CT_AAnFtoUE, 
+           sign(Sign_Mac('g'^~v.3, z.4), ~AF_RSA.2), 'g'^~v.3, 
+           Sign_Mac('g'^~v.3, z.4)>
+     ),
+     AF_Confirmation( ~tid, ~id_AF, K_AF, <A_TID, ~id_HN>, ~cid )
+     ]
+  ,
+  rule (modulo AC) AF_Response_Key___VARIANT_9:
+     [
+     RcvS( ~cid, ~id_HN, ~id_AF,
+           <K_AF, ~exptime, MAC(<A_TID, ~id_HN>), CT_AAnFtoUE>
+     ),
+     AF_request( ~tid, ~id_AF, <A_TID, ~id_HN>,
+                 aenc(<x.5^(x.6*inv((~v.3*x.7))), z.4>, pk(~AF_RSA.2)), ~cid
+     ),
+     Fr( ~v.3 ), !AF_Ltk( ~id_AF, ~AF_RSA.2 )
+     ]
+    --[
+    InTerm2( aenc(<x.5^(x.6*inv((~v.3*x.7))), z.4>, pk(~AF_RSA.2)), z.4
+    ),
+    AF_session_response( ~id_AF, K_AF ),
+    Forward_Secrecy( ~tid, KDF_AF(K_AF, x.5^(x.6*inv(x.7))) ),
+    Secret( <'K_AF', K_AF>, ~id_AF ),
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.5^(x.6*inv(x.7)))>, ~id_AF ),
+    Commit( ~id_AF, <A_TID, ~id_HN>, <'UE', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF', K_AF> ),
+    Commit( ~id_AF, ~id_HN, <'HN', 'AF', 'K_AF_exptime', ~exptime> ),
+    Honest( ~id_AF ), Honest( ~id_HN ), Honest( <A_TID, ~id_HN> )
+    ]->
+     [
+     Out( <f(K_AF, 'AF'), CT_AAnFtoUE, 
+           sign(Sign_Mac('g'^~v.3, z.4), ~AF_RSA.2), 'g'^~v.3, 
+           Sign_Mac('g'^~v.3, z.4)>
+     ),
+     AF_Confirmation( ~tid, ~id_AF, K_AF, <A_TID, ~id_HN>, ~cid )
+     ]
+
+rule (modulo E) UE_Key_Confirmation:
+   [
+   In( <f(K_AF, 'AF'), CT_AAnFtoUE, RES_AF, V, Sign_Mac_Value> ),
+   !AF_Pk( ~id_AF, PK_AF ),
+   UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA, <A_TID, ~id_HN>, K_AF, ~id_AF,
+           ~u, ~a2
+   )
+   ]
+  --[
+  Secret( <'K_AF_prime', KDF_AF(K_AF, V^~u)>, ~SUPI ),
+  Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA> ),
+  Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                <'UE', 'AF', 'K_AF', K_AF>
+  ),
+  Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+  UE_Key_Confirmation( ~SUPI, K_AF ),
+  Eq( verify(RES_AF, Sign_Mac_Value, PK_AF), true ),
+  Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE, K_AKMA)) )
+  ]->
+   [ ]
+ variants
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_1:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, RES_AF.7, V.9, Sign_Mac_Value.8>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.6 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, V.9^~u.3)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.7, Sign_Mac_Value.8, PK_AF.6), true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_2:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, RES_AF.7, z.9^inv(~u.3), 
+          Sign_Mac_Value.8>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.6 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, z.9)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.7, Sign_Mac_Value.8, PK_AF.6), true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_3:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, sign(Sign_Mac_Value.6, x.8), 
+          V.7, Sign_Mac_Value.6>
+     ),
+     !AF_Pk( ~id_AF, pk(x.8) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, V.7^~u.3)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_4:
+     [
+     In( <f(K_AF, 'AF'), senc(x.9, K_AKMA.4), RES_AF.6, V.8, 
+          Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, V.8^~u.3)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), snd(x.9) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_5:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.10, z.9>, K_AKMA.4), RES_AF.6, V.8, 
+          Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, V.8^~u.3)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), z.9 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_6:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, RES_AF.7, x.9^x.10, 
+          Sign_Mac_Value.8>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.6 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^(~u.3*x.10))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.7, Sign_Mac_Value.8, PK_AF.6), true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_7:
+     [
+     In( <f(K_AF, 'AF'), senc(x.9, K_AKMA.4), RES_AF.6, z.8^inv(~u.3), 
+          Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, z.8)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), snd(x.9) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_8:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.10, z.9>, K_AKMA.4), RES_AF.6, 
+          z.8^inv(~u.3), Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, z.8)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), z.9 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_9:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, sign(Sign_Mac_Value.6, x.7), 
+          x.8^x.9, Sign_Mac_Value.6>
+     ),
+     !AF_Pk( ~id_AF, pk(x.7) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^(~u.3*x.9))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_10:
+     [
+     In( <f(K_AF, 'AF'), senc(x.8, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.7), V.6, Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.7) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, V.6^~u.3)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(x.8) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_11:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.9, z.7>, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.8), V.6, Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.8) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, V.6^~u.3)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), z.7 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_12:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, sign(Sign_Mac_Value.6, x.8), 
+          z.7^inv(~u.3), Sign_Mac_Value.6>
+     ),
+     !AF_Pk( ~id_AF, pk(x.8) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, z.7)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_13:
+     [
+     In( <f(K_AF, 'AF'), senc(x.8, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.7), z.6^inv(~u.3), Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.7) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, z.6)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(x.8) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_14:
+     [
+     In( <f(K_AF, 'AF'), senc(x.7, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.6), x.8^x.9, Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.6) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^(~u.3*x.9))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(x.7) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_15:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.9, z.7>, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.8), z.6^inv(~u.3), Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.8) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, z.6)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), z.7 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_16:
+     [
+     In( <f(K_AF, 'AF'), senc(x.8, K_AKMA.4), RES_AF.6, x.9^x.10, 
+          Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^(~u.3*x.10))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), snd(x.8) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_17:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.10, z.6>, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.7), x.8^x.9, Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.7) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^(~u.3*x.9))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), z.6 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_18:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, sign(Sign_Mac_Value.6, x.7), 
+          x.8^inv((~u.3*x.9)), Sign_Mac_Value.6>
+     ),
+     !AF_Pk( ~id_AF, pk(x.7) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^inv(x.9))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_19:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, sign(Sign_Mac_Value.6, x.7), 
+          x.8^(x.9*inv(~u.3)), Sign_Mac_Value.6>
+     ),
+     !AF_Pk( ~id_AF, pk(x.7) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^x.9)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_20:
+     [
+     In( <f(K_AF, 'AF'), senc(x.7, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.6), x.8^inv((~u.3*x.9)), Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.6) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^inv(x.9))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(x.7) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_21:
+     [
+     In( <f(K_AF, 'AF'), senc(x.7, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.6), x.8^(x.9*inv(~u.3)), Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.6) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^x.9)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(x.7) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_22:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.11, z.8>, K_AKMA.4), RES_AF.6, 
+          x.9^x.10, Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^(~u.3*x.10))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), z.8 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_23:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, RES_AF.7, x.9^inv((~u.3*x.10)), 
+          Sign_Mac_Value.8>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.6 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^inv(x.10))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.7, Sign_Mac_Value.8, PK_AF.6), true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_24:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, RES_AF.7, x.9^(x.10*inv(~u.3)), 
+          Sign_Mac_Value.8>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.6 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^x.10)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.7, Sign_Mac_Value.8, PK_AF.6), true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_25:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, sign(Sign_Mac_Value.6, x.7), 
+          x.8^(x.9*inv((~u.3*x.10))), Sign_Mac_Value.6>
+     ),
+     !AF_Pk( ~id_AF, pk(x.7) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^(x.9*inv(x.10)))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_26:
+     [
+     In( <f(K_AF, 'AF'), senc(x.8, K_AKMA.4), RES_AF.6, 
+          x.9^inv((~u.3*x.10)), Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^inv(x.10))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), snd(x.8) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_27:
+     [
+     In( <f(K_AF, 'AF'), senc(x.8, K_AKMA.4), RES_AF.6, 
+          x.9^(x.10*inv(~u.3)), Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^x.10)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), snd(x.8) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_28:
+     [
+     In( <f(K_AF, 'AF'), senc(x.7, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.6), x.8^(x.9*inv((~u.3*x.10))), 
+          Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.6) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^(x.9*inv(x.10)))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(x.7) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_29:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.10, z.6>, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.7), x.8^inv((~u.3*x.9)), Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.7) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^inv(x.9))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), z.6 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_30:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.10, z.6>, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.7), x.8^(x.9*inv(~u.3)), Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.7) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.8^x.9)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), z.6 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_31:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.4, RES_AF.7, 
+          x.9^(x.10*inv((~u.3*x.11))), Sign_Mac_Value.8>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.6 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.5, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^(x.10*inv(x.11)))>, ~SUPI
+    ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.5> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.7, Sign_Mac_Value.8, PK_AF.6), true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.4, K_AKMA.5)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_32:
+     [
+     In( <f(K_AF, 'AF'), senc(x.8, K_AKMA.4), RES_AF.6, 
+          x.9^(x.10*inv((~u.3*x.11))), Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^(x.10*inv(x.11)))>, ~SUPI
+    ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), snd(x.8) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_33:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.11, z.8>, K_AKMA.4), RES_AF.6, 
+          x.9^inv((~u.3*x.10)), Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^inv(x.10))>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), z.8 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_34:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.11, z.8>, K_AKMA.4), RES_AF.6, 
+          x.9^(x.10*inv(~u.3)), Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^x.10)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), z.8 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_35:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.8, z.6>, K_AKMA.4), 
+          sign(Sign_Mac_Value.5, x.7), x.9^(x.10*inv((~u.3*x.11))), 
+          Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.7) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.9^(x.10*inv(x.11)))>, ~SUPI
+    ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), z.6 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_36:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.9, z.8>, K_AKMA.4), RES_AF.6, 
+          x.10^(x.11*inv((~u.3*x.12))), Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u.3, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, x.10^(x.11*inv(x.12)))>, ~SUPI
+    ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), z.8 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_37:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.3, RES_AF.6, DH_neutral, 
+          Sign_Mac_Value.7>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.5 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, DH_neutral)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.6, Sign_Mac_Value.7, PK_AF.5), true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.3, K_AKMA.4)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_38:
+     [
+     In( <f(K_AF, 'AF'), CT_AAnFtoUE.3, sign(Sign_Mac_Value.5, x.6), 
+          DH_neutral, Sign_Mac_Value.5>
+     ),
+     !AF_Pk( ~id_AF, pk(x.6) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.4, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, DH_neutral)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.4> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(sdec(CT_AAnFtoUE.3, K_AKMA.4)) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_39:
+     [
+     In( <f(K_AF, 'AF'), senc(x.7, K_AKMA.3), RES_AF.5, DH_neutral, 
+          Sign_Mac_Value.6>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.4 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.3, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, DH_neutral)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.3> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.5, Sign_Mac_Value.6, PK_AF.4), true ),
+    Eq( ('1'++~a2), snd(x.7) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_40:
+     [
+     In( <f(K_AF, 'AF'), senc(x.6, K_AKMA.3), 
+          sign(Sign_Mac_Value.4, x.5), DH_neutral, Sign_Mac_Value.4>
+     ),
+     !AF_Pk( ~id_AF, pk(x.5) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.3, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, DH_neutral)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.3> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), snd(x.6) )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_41:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.8, z.7>, K_AKMA.3), RES_AF.5, 
+          DH_neutral, Sign_Mac_Value.6>
+     ),
+     !AF_Pk( ~id_AF, PK_AF.4 ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.3, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, DH_neutral)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.3> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ),
+    Eq( verify(RES_AF.5, Sign_Mac_Value.6, PK_AF.4), true ),
+    Eq( ('1'++~a2), z.7 )
+    ]->
+     [ ]
+  ,
+  rule (modulo AC) UE_Key_Confirmation___VARIANT_42:
+     [
+     In( <f(K_AF, 'AF'), senc(<x.7, z.5>, K_AKMA.3), 
+          sign(Sign_Mac_Value.4, x.6), DH_neutral, Sign_Mac_Value.4>
+     ),
+     !AF_Pk( ~id_AF, pk(x.6) ),
+     UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA.3, <A_TID, ~id_HN>, K_AF,
+             ~id_AF, ~u, ~a2
+     )
+     ]
+    --[
+    Secret( <'K_AF_prime', KDF_AF(K_AF, DH_neutral)>, ~SUPI ),
+    Commit( ~SUPI, ~id_HN, <'AAnF', 'UE', 'K_AKMA', K_AKMA.3> ),
+    Confirmation( <'UE', ~SUPI>, <'AF', ~id_AF>,
+                  <'UE', 'AF', 'K_AF', K_AF>
+    ),
+    Honest( ~id_AF ), Honest( ~SUPI ), Honest( ~id_HN ),
+    UE_Key_Confirmation( ~SUPI, K_AF ), Eq( true, true ),
+    Eq( ('1'++~a2), z.5 )
+    ]->
+     [ ]
+
+lemma Protocol_executable_without_Reprimary:
+  exists-trace
+  "∃ A B C m #i1 #i2 #i3 #i6 #i7 #i8 #i9 #i10.
+    (((((((Generation_UE( A ) @ #i1) ∧ (Generation_HN( B ) @ #i2)) ∧
+         (K_AKMA_Register( B ) @ #i3)) ∧
+        (UE_send_request( A ) @ #i6)) ∧
+       (AF_send_KeyRequest( C ) @ #i7)) ∧
+      (HN_Response( B, m ) @ #i8)) ∧
+     (AF_session_response( C, m ) @ #i9)) ∧
+    (UE_Key_Confirmation( A, m ) @ #i10)"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ A B C m #i1 #i2 #i3 #i6 #i7 #i8 #i9 #i10.
+  (Generation_UE( A ) @ #i1) ∧
+  (Generation_HN( B ) @ #i2) ∧
+  (K_AKMA_Register( B ) @ #i3) ∧
+  (UE_send_request( A ) @ #i6) ∧
+  (AF_send_KeyRequest( C ) @ #i7) ∧
+  (HN_Response( B, m ) @ #i8) ∧
+  (AF_session_response( C, m ) @ #i9) ∧
+  (UE_Key_Confirmation( A, m ) @ #i10)"
+*/
+simplify
+solve( UE_Auth( ~SUPI, K_AUSF, ~id_HN ) ▶₀ #i1 )
+  case Init_Pri_Auth
+  solve( AUSF( ~SUPI.1, ~id_HN.1, K_AUSF ) ▶₀ #i2 )
+    case Init_Pri_Auth
+    solve( AUSF_KEY( ~SUPI.2, K_AUSF, ~id_HN, K_AKMA, <A_TID, ~id_HN>
+           ) ▶₀ #i3 )
+      case AKMA_Material_Generation_AUSF
+      solve( UE_Auth_KEY( ~SUPI, K_AUSF, K_AKMA, <A_TID, ~id_HN.1>
+             ) ▶₀ #i6 )
+        case AKMA_Material_Generation_UE
+        solve( !KU( ~id_HN.1 ) @ #vk.3 )
+          case AF_Response_Key___VARIANT_1_case_1
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_1_case_2
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_1_case_3
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_1_case_4
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_1_case_5
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_1_case_6
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_1_case_7
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_1_case_8
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_2_case_1
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_2_case_2
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_2_case_3
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_2_case_4
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_2_case_5
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_2_case_6
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_2_case_7
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_2_case_8
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_3_case_1
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_3_case_2
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_3_case_3
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_3_case_4
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_3_case_5
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_3_case_6
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_3_case_7
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_3_case_8
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_4_case_1
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_4_case_2
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_4_case_3
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_4_case_4
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_4_case_5
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_4_case_6
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_4_case_7
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_4_case_8
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_5_case_1
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_5_case_2
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_5_case_3
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_5_case_4
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_5_case_5
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_5_case_6
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_5_case_7
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_5_case_8
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_6_case_1
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_6_case_2
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_6_case_3
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_6_case_4
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_6_case_5
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_6_case_6
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_6_case_7
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_6_case_8
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_7_case_1
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_7_case_2
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_7_case_3
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_7_case_4
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_7_case_5
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_7_case_6
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_7_case_7
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_7_case_8
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_8_case_1
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_8_case_2
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_8_case_3
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_8_case_4
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_8_case_5
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_8_case_6
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_8_case_7
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_8_case_8
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_9_case_1
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_9_case_2
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_9_case_3
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_9_case_4
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_9_case_5
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_9_case_6
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_9_case_7
+          by sorry
+        next
+          case AF_Response_Key___VARIANT_9_case_8
+          by sorry
+        next
+          case Init_AF
+          solve( !AF_Pk( ~id_AF, PK_AF ) ▶₁ #i6 )
+            case Init_AF
+            solve( !AF_Pk( ~id_AF.1, PK_AF ) ▶₀ #i7 )
+              case Init_AF
+              solve( HN_Response( ~id_HN, m ) @ #i8 )
+                case AAnF_Send_K_AF___VARIANT_1
+                solve( AAnF_KEY( ~id_HN, ~SUPI.3, <A_TID.1, ~id_HN>, K_AKMA, m,
+                                 ~id_AF.2
+                       ) ▶₁ #i8 )
+                  case K_AF_Generation_AAnF_case_1
+                  solve( RcvS( ~cid.1, ~id_AF.2, ~id_HN,
+                               <KDF_A_TID(KDF_AUSF(~K.3, ~id_HN, ~R.4), ~SUPI.3, $C_2.4), ~id_HN, 
+                                ~id_AF.2, CT_UEtoAAnF.1>
+                         ) ▶₂ #i8 )
+                    case receive_secure
+                    solve( !KU( KDF_A_TID(KDF_AUSF(~K.3, ~id_HN, ~R.4), ~SUPI.3,
+                                          $C_2.4)
+                           ) @ #vk.8 )
+                      case UE_send_request
+                      solve( AF_session_response( ~id_AF.1,
+                                                  KDF_AF(KDF_AKMA(KDF_AUSF(~K.3, ~id_HN, ~R.4),
+                                                                  ~SUPI.3, $C_1.4),
+                                                         ~id_AF.2)
+                             ) @ #i9 )
+                        case AF_Response_Key___VARIANT_1
+                        solve( UE_Key_Confirmation( ~SUPI,
+                                                    KDF_AF(KDF_AKMA(KDF_AUSF(~K.3, ~id_HN, ~R.4),
+                                                                    ~SUPI.3, $C_1.4),
+                                                           ~id_AF.2)
+                               ) @ #i10 )
+                          case UE_Key_Confirmation___VARIANT_1
+                          solve( !KU( ~id_HN ) @ #vk.10 )
+                            case Init_HN
+                            solve( RcvS( ~cid.2, ~id_HN.3, ~id_AF.3,
+                                         <
+                                          KDF_AF(KDF_AKMA(KDF_AUSF(~K.1, ~id_HN, ~R.1), ~SUPI.1,
+                                                          $C_1.1),
+                                                 ~id_AF), 
+                                          ~exptime.1, MAC(<A_TID.2, ~id_HN.3>), CT_AAnFtoUE.1>
+                                   ) ▶₀ #i9 )
+                              case receive_secure
+                              solve( !KU( f(KDF_AF(KDF_AKMA(KDF_AUSF(~K.1, ~id_HN, ~R.1),
+                                                            ~SUPI.1, $C_1.1),
+                                                   ~id_AF),
+                                            'AF')
+                                     ) @ #vk.15 )
+                                case AF_Response_Key___VARIANT_1
+                                solve( UE_KEY( ~tid, ~SUPI, K_AUSF, K_AKMA, <A_TID, ~id_HN.1>,
+                                               KDF_AF(KDF_AKMA(KDF_AUSF(~K.1, ~id_HN, ~R.1),
+                                                               ~SUPI.1, $C_1.1),
+                                                      ~id_AF),
+                                               ~id_AF.1, ~u, ~a2
+                                       ) ▶₂ #i10 )
+                                  case UE_send_request
+                                  solve( !AF_Pk( ~id_AF, PK_AF ) ▶₁ #i10 )
+                                    case Init_AF
+                                    solve( !Sub( ~SUPI, ~id_HN ) ▶₆ #i6 )
+                                      case Subscribe_UE
+                                      SOLVED // trace found
+                                    qed
+                                  qed
+                                qed
+                              next
+                                case c_f
+                                by sorry
+                              qed
+                            qed
+                          next
+                            case UE_send_request
+                            by sorry
+                          qed
+                        next
+                          case UE_Key_Confirmation___VARIANT_10
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_11
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_12
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_13
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_14
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_15
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_16
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_17
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_18
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_19
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_2
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_20
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_21
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_22
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_23
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_24
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_25
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_26
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_27
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_28
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_29
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_3
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_30
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_31
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_32
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_33
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_34
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_35
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_36
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_37
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_38
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_39
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_4
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_40
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_41
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_42
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_5
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_6
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_7
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_8
+                          by sorry
+                        next
+                          case UE_Key_Confirmation___VARIANT_9
+                          by sorry
+                        qed
+                      next
+                        case AF_Response_Key___VARIANT_2
+                        by sorry
+                      next
+                        case AF_Response_Key___VARIANT_3
+                        by sorry
+                      next
+                        case AF_Response_Key___VARIANT_4
+                        by sorry
+                      next
+                        case AF_Response_Key___VARIANT_5
+                        by sorry
+                      next
+                        case AF_Response_Key___VARIANT_6
+                        by sorry
+                      next
+                        case AF_Response_Key___VARIANT_7
+                        by sorry
+                      next
+                        case AF_Response_Key___VARIANT_8
+                        by sorry
+                      next
+                        case AF_Response_Key___VARIANT_9
+                        by sorry
+                      qed
+                    next
+                      case c_KDF_A_TID
+                      by sorry
+                    qed
+                  qed
+                next
+                  case K_AF_Generation_AAnF_case_2
+                  by sorry
+                qed
+              next
+                case AAnF_Send_K_AF___VARIANT_2
+                by sorry
+              next
+                case AAnF_Send_K_AF___VARIANT_3
+                by sorry
+              qed
+            qed
+          qed
+        next
+          case Init_HN
+          by sorry
+        next
+          case Reveal_K
+          by sorry
+        next
+          case Reveal_SUPI
+          by sorry
+        next
+          case Reveal_sk_HN
+          by sorry
+        next
+          case UE_send_request_case_1
+          by sorry
+        next
+          case UE_send_request_case_2
+          by sorry
+        next
+          case UE_send_request_case_3
+          by sorry
+        next
+          case UE_send_request_case_4
+          by sorry
+        next
+          case fresh
+          by sorry
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma secure_K_AF_prime:
+  all-traces
+  "∀ n A #i.
+    (Secret( <'K_AF_prime', n>, A ) @ #i) ⇒
+    ((¬(∃ #j. K( n ) @ #j)) ∨
+     (∃ X data #r. (Reveal( X, data ) @ #r) ∧ (Honest( X ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ n A #i.
+  (Secret( <'K_AF_prime', n>, A ) @ #i)
+ ∧
+  (∃ #j. (K( n ) @ #j)) ∧
+  (∀ X data #r. (Reveal( X, data ) @ #r) ∧ (Honest( X ) @ #i) ⇒ ⊥)"
+*/
+by sorry
+
+lemma secure_SUPI:
+  all-traces
+  "∀ n A #i.
+    (Secret( <'SUPI', n>, A ) @ #i) ⇒
+    ((¬(∃ #j. K( n ) @ #j)) ∨
+     (∃ X data #r. (Reveal( X, data ) @ #r) ∧ (Honest( X ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ n A #i.
+  (Secret( <'SUPI', n>, A ) @ #i)
+ ∧
+  (∃ #j. (K( n ) @ #j)) ∧
+  (∀ X data #r. (Reveal( X, data ) @ #r) ∧ (Honest( X ) @ #i) ⇒ ⊥)"
+*/
+by sorry
+
+lemma Forward_Secrecy:
+  all-traces
+  "∀ t1 A #i.
+    (Forward_Secrecy( t1, A ) @ #i) ⇒
+    ((¬(∃ #j. !KU( A ) @ #j)) ∨
+     (∃ P data #r.
+       ((Reveal( P, data ) @ #r) ∧ (#r < #i)) ∧ (Honest( P ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ t1 A #i.
+  (Forward_Secrecy( t1, A ) @ #i)
+ ∧
+  (∃ #j. (!KU( A ) @ #j)) ∧
+  (∀ P data #r.
+    (Reveal( P, data ) @ #r) ∧ (Honest( P ) @ #i) ⇒ ¬(#r < #i))"
+*/
+by sorry
+
+lemma mutual_authentication_UE_AAnF_one_direction:
+  all-traces
+  "∀ A B t #i1.
+    (Commit( A, B, <'UE', 'AAnF', 'K_AKMA', t> ) @ #i1) ⇒
+    ((∃ #j1. Running( B, A, <'UE', 'AAnF', 'K_AKMA', t> ) @ #j1) ∨
+     (∃ D m #l. (Reveal( D, m ) @ #l) ∧ (Honest( D ) @ #i1)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A B t #i1.
+  (Commit( A, B, <'UE', 'AAnF', 'K_AKMA', t> ) @ #i1)
+ ∧
+  (∀ #j1. (Running( B, A, <'UE', 'AAnF', 'K_AKMA', t> ) @ #j1) ⇒ ⊥) ∧
+  (∀ D m #l. (Reveal( D, m ) @ #l) ∧ (Honest( D ) @ #i1) ⇒ ⊥)"
+*/
+by sorry
+
+lemma mutual_authentication_UE_AAnF_other_direction:
+  all-traces
+  "∀ A B t #i2.
+    (Commit( B, A, <'AAnF', 'UE', 'K_AKMA', t> ) @ #i2) ⇒
+    ((∃ #j2. Running( A, B, <'AAnF', 'UE', 'K_AKMA', t> ) @ #j2) ∨
+     (∃ D m #l. (Reveal( D, m ) @ #l) ∧ (Honest( D ) @ #i2)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A B t #i2.
+  (Commit( B, A, <'AAnF', 'UE', 'K_AKMA', t> ) @ #i2)
+ ∧
+  (∀ #j2. (Running( A, B, <'AAnF', 'UE', 'K_AKMA', t> ) @ #j2) ⇒ ⊥) ∧
+  (∀ D m #l. (Reveal( D, m ) @ #l) ∧ (Honest( D ) @ #i2) ⇒ ⊥)"
+*/
+by sorry
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* All wellformedness checks were successful. */
+
+lemma AUTO_typing [sources]:
+  all-traces
+  "(⊤) ∧
+   (∀ x m #i.
+     (AUTO_IN_TERM_2_3_1_1_1_0_1__AAnF_Send_K_AF___VARIANT_3( m, x
+      ) @ #i) ⇒
+     ((∃ #j. (!KU( x ) @ #j) ∧ (#j < #i)) ∨
+      (∃ #j.
+        (AUTO_OUT_TERM_2_3_1_1_1_0_1__AAnF_Send_K_AF___VARIANT_3( m
+         ) @ #j) ∧
+        (#j < #i))))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ x m #i.
+  (AUTO_IN_TERM_2_3_1_1_1_0_1__AAnF_Send_K_AF___VARIANT_3( m, x
+   ) @ #i)
+ ∧
+  (∀ #j. (!KU( x ) @ #j) ⇒ ¬(#j < #i)) ∧
+  (∀ #j.
+    (AUTO_OUT_TERM_2_3_1_1_1_0_1__AAnF_Send_K_AF___VARIANT_3( m ) @ #j)
+   ⇒
+    ¬(#j < #i))"
+*/
+by sorry
+
+/*
+Generated from:
+Tamarin version 1.8.0
+Maude version 2.7.1
+Git revision: UNKNOWN, branch: UNKNOWN
+Compiled at: 2023-08-30 13:15:41.590881948 UTC
+*/
+
+end
