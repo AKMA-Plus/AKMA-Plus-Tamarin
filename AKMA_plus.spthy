@@ -190,7 +190,7 @@ rule Reveal_K:
 	]->
 	[Out(~K)]
 
-// Compromised home network (private asymmetric key sk_HN)  // not need
+// Compromised home network (private asymmetric key sk_HN)
 rule Reveal_sk_HN:
 	[!HN_key(~idHN, ~sk_HN)]
 	--[
